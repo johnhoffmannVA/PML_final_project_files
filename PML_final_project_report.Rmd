@@ -1,0 +1,132 @@
+---
+title: "Practical Machine Learning Final Project"
+author: "J. Hoffmann"
+output: html_document
+---  
+   
+*****    
+**Background**    
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves. One thing that people do regularly is quantify how much of a particular activity they do, but they rarely quantify how well they do it. This project uses data from accelerometers on the belt, forearm, arm, and dumbbell of six participants. They were asked perform barbell lifts correctly and incorrectly in five different ways (Ugilino et al., 2012):
+
+- Class A: exactly according to the specification (proper execution)
+- Class B: throwing the elbows to the front (common mistake)
+- Class C: lifting the dumbbell only halfway (common mistake)
+- Class D: lowering the dumbbell only halfway (common mistake)
+- Class F: Throwing the hips to the front (common mistake)  
+    
+***  
+**Project Goal**    
+The goal of this project is to predict the manner in which the participants did the exercises. The variable "classe" provides the outcome variable in the training set. Several of the other variables serve as predictors of this outcome. A key goal is to determine whether a model can successfully differentiate between doing the exercise correctly or incorrectly; thus, one might be particularly interested in successfully predicting Class A.    
+  
+***  
+**Report**    
+This report provides the steps used to predict the outcome "classe." It consists of the following:
+
+- A. Data input and cleaning stage
+
+- B. Data set up for cross-validation
+
+- C. The expected out of sample error, and
+
+- D. Why certain choices were made  
+  
+  
+*** 
+**STEP A: DATA INPUT & CLEANING**   
+*load libraries*
+```{r}
+library(caret)
+library(randomForest)
+library(e1071)
+library(ggplot2)
+library(AppliedPredictiveModeling)
+library(gbm)
+```
+    
+*Read in training set data*    
+```{r}
+pml.train <- read.csv("pml-training.csv", na.strings = c("", "NA","#DIV/0!"))
+```
+    
+*Read in testing set data*    
+```{r}
+pml.test <- read.csv("pml-testing.csv", na.strings = c("", "NA","#DIV/0!"))  
+```
+    
+*Eliminate missing values and variables with all missing or that are near zero or zero variance:*       
+
+*Training data set*   
+```{r}
+NAs = apply(pml.train,2,function(x) {sum(is.na(x))})  
+pml.train = pml.train[,which(NAs == 0)]
+pml.train.new = pml.train[,8:60]   
+nzv = nearZeroVar(pml.train.new,saveMetrics=TRUE)   
+pml.train.new = pml.train.new[,nzv$nzv==FALSE]  
+```
+    
+*Test data set*     
+```{r}
+NAs = apply(pml.test,2,function(x) {sum(is.na(x))})  
+pml.test = pml.test[,which(NAs == 0)]  
+pml.test.new = pml.test[,8:60]  
+nzv = nearZeroVar(pml.test.new,saveMetrics=TRUE)  
+pml.test.new = pml.test.new[,nzv$nzv==FALSE]  
+```
+
+
+****    
+**STEP B: CROSS-VALIDATION & ESTIMATION OF THE RANDOM FOREST MODEL**    
+The randomForest procedure in R uses cross-validation internally (Liaw, 2015), so it is used to estimate the model with the training data. The following R code utilized:  
+
+```{r}
+set.seed(995512)
+classe.RF <-  randomForest(classe ~ ., data=pml.train.new, importance=TRUE)  
+classe.RF 
+```
+
+  
+***
+**STEP C: EXPECTED OUT-OF-SAMPLE ERROR**    
+According to the results of the random forest model out-of-bag (OOB) estimate, the error rate is expected to be quite small: 0.28%, with accuracy slightly greater than 99%. Assuming we wish to predict outcome A (proper execution of exercises) accurately, its expected out-of-bag error rate is 0.04%.      
+   
+***  
+**STEP C1: Assessing the Number of Predictors**    
+The originator of the random forest model claimed that it could not suffer from overfitting (Breiman, 2001). Nevertheless, the randomForest library in R offers an option for feature selection using cross-validation (*rfcv*) (see Liaw, 2015). This is used next to see if a certain number of covariates are particularly useful for classification.  
+
+```{r}
+cv.train <- rfcv(pml.train.new[,1:52], pml.train.new$classe, cv.fold=3) 
+with(cv.train, plot(n.var, error.cv, log="x", type="o", lwd=2))  
+cv.train$error.cv
+    
+importance(classe.RF)
+```
+    
+
+The graph suggests that the number of predictors could be reduced substantially with little sacrifice to errors in classification. In particular, examining the expected error rate (*error.cv*) suggests that the error is reduced to about 0.01 with a subset of 13 predictors. Moreover, the importance table suggests that there are particular subsets of variables that should be examined. For example, assuming one's goal is to build a parsimonious prediction model that will assist those wishing to understand the correct execution of the exercises, it might be wise to explore a few subsets of predictors.        
+    
+    
+***   
+**Test of predictions in the test data set**      
+The following was used to predict the outcome in the test data set.      
+
+```{r}
+predict.test <- predict(classe.RF, pml.test.new)
+predict.test  
+```
+  
+****  
+**STEP D: WHY CERTAIN CHOICES WERE MADE**     
+Since accuracy seems to be the main goal in this class and in this assignment, presumably over a conceptual model that might dictate the "classe" outcome, it made sense to use a random forest model. As is well known, random forest models place a premium on high predictability, even at the expense of understanding the specific effects of covariates or interaction patterns among sets of covariates. Moreover, the random forest library in R provides some useful features, such as cross-validation built into the algorithm and direct out-of-bag estimates of the error and specific classification rates.     
+  
+Another option that was considered for this project was to use a boosting algorithm - in particular the generalized boosted regression model (*gbm*) - which has been shown empirically across many studies to provide a high level of accuracy (Elith et al., 2008). However, given the high degree of accuracy manifest from the random forest model, it seemed futile to use a gbm model (the gbm model took an inordinate amount of time to converge).   
+
+****  
+**References**
+
+Breiman, L. (2001). Random forests. *Machine Learning* 45(1), 5-32.
+
+Elith, J., Leathwick, J. R., & Hastie, T. (2008). A working guide to boosted regression trees. *Journal of Animal Ecology*, 77(4), 802-813.
+
+Liaw, A. (2015). *Package 'randomForest.'* Retrieved from https://cran.r-project.org/web/packages/randomForest/randomForest.pdf, July 15, 2015.
+
+Ugulino, W., Cardador, D., Vega, K., Velloso, E., Milidiu, R., & Fuks, H. (2012). Wearable computing: Accelerometers' data classification of body postures and movements. *Proceedings of 21^st^ Brazilian Symposium on Artificial Intelligence. Advances in Artificial Intelligence - SBIA 2012*. In: *Lecture Notes in Computer Science*, pp. 52-61. Curitiba, PR: Springer.
